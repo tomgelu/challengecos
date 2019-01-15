@@ -107,24 +107,34 @@ async function AddEntry(database, word, queue, i = 0)
         let type = info.type()
         if (!type)
             return
-        // Exit if the "from" aka last term isnt found in this page.
-        if (word.from && doc.text().search(word.from) == -1 && exitLastTerm) {
-            if (verbose.verbose)
-                console.log(`Last term (${word.from}) not found in this search (${word.page})`)
-            return
+        // Exit if the "from" aka last term isnt found in last pages.
+        if (word.from.length != 0 && exitLastTerm) {
+            let count = 0
+            word.from.forEach(w => {
+                if (doc.text().search(w) == -1)
+                    count++
+                /*
+                if (verbose.verbose)
+                    console.log(`Last term (${w}) not found in this search (${word.page})`)
+                */
+            })
+            if (count == word.from.length)
+                return
         }
         if (!database[doc.title()] && templateList.includes(type))
         {
-            database[doc.title()] = new Entity(word, {type:type, data:data})
-            if (word.from)
+            console.log(`\x1b[32mCreating entity : ${doc.title()}\x1b[0m`)
+            database[doc.title()] = new Entity(word, {}) // {type:type, data:data})
+            if (word.from.length != 0)
             {
                 if (word.relation)
-                    database[doc.title()].relations.push(new Relation(word.from, word.relation))
+                    database[doc.title()].relations.push(new Relation([...word.from].pop(), word.relation))
                 else
-                    database[doc.title()].relations.push(new Relation(word.from, undefined))
+                    database[doc.title()].relations.push(new Relation([...word.from].pop(), undefined))
             }
         }
         // find related links in infobox and their relations
+        word.from.push(doc.title())
         doc.infobox().links().forEach((link, key) => {
             let relation = undefined
             let flatten = flattenObject(data)
@@ -135,7 +145,7 @@ async function AddEntry(database, word, queue, i = 0)
             });
             if (relation)
                 relation = relation.split('.')[0]
-            queue.push({page:link.page, recursion:i + 1, from:doc.title(), relation:relation })
+            queue.push({page:link.page, recursion:i + 1, from:word.from, relation:relation, recursionCount:word.recursionCount})
         })
     }).catch(err => {
         return err
@@ -150,7 +160,7 @@ async function FillDatabase(database, wordList, maxRecursion)
     let i = 0
     let queue = []
     wordList.forEach(word => {
-        queue.push({page:word, recursion:0, from:undefined, relation: undefined})
+        queue.push({page:word, recursion:0, from:[], relation: undefined, recursionCount: 0})
     })
     console.log("Initial queue status:")
     console.log(queue)
@@ -159,14 +169,12 @@ async function FillDatabase(database, wordList, maxRecursion)
         let search = queue.shift()
         if (!explored[search.page])
         {
-            if (verbose.verbose)
-            {
-                console.log(`Searching for : ${search.page}`)
-            }
             try
             {
-                if (search.recursion < maxRecursion)
+                if (search.recursion <= maxRecursion)
                 {
+                    if (verbose.verbose)
+                        console.log(`Searching for : ${search.page}`)
                     let result = await AddEntry(database, search, queue, search.recursion)
                     console.debug(`AddEntry : Promise resolved with result ${result}`)
                     explored[search.page] = true
@@ -199,7 +207,10 @@ jsonfile.readFile(wordlistfile).then(list => {
         // Get old data from file
         database = data
         // start scraping from wordList
-        FillDatabase(database, wordList, 4).then(() => {
+        FillDatabase(database, wordList, 2).then(() => {
+            Object.keys(database).forEach(function(objectKey, index) {
+                database[objectKey].name = objectKey
+            });
             jsonfile.writeFile(dbfile, database)
         })
     })
