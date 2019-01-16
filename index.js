@@ -207,7 +207,7 @@ jsonfile.readFile(wordlistfile).then(list => {
         // Get old data from file
         database = data
         // start scraping from wordList
-        FillDatabase(database, wordList, 2).then(() => {
+        FillDatabase(database, wordList, 3).then(() => {
             Object.keys(database).forEach(function(objectKey, index) {
                 database[objectKey].name = objectKey
             });
